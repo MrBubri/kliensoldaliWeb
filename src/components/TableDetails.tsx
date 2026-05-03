@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import type { Table } from "../types/types";
 import { getTableSize } from "../utils/placement";
 
