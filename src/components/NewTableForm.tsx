@@ -8,7 +8,7 @@ type Props = {
 export default function NewTableForm({ onCreateRequest }: Props) {
   const [type, setType] = useState("foosball");
   const [category, setCategory] = useState("normal");
-  const [color, setColor] = useState("#10b981"); // default green
+  const [color, setColor] = useState("green");
   const [status, setStatus] = useState(8);
   const [posX, setPosX] = useState(0);
   const [posY, setPosY] = useState(0);
@@ -40,12 +40,17 @@ export default function NewTableForm({ onCreateRequest }: Props) {
       </select>
 
       <label className="block text-sm">Szín</label>
-      <input
-        type="color"
+      <select
         value={color}
         onChange={(e) => setColor(e.target.value)}
-        className="w-full mb-2"
-      />
+        className="w-full border p-2 rounded mb-4"
+      >
+        <option value="red">Piros</option>
+        <option value="green">Zöld</option>
+        <option value="blue">Kék</option>
+        <option value="yellow">Sárga</option>
+        <option value="purple">Lila</option>
+      </select>
 
       <label className="block text-sm">Állapot {status}</label>
       <input

@@ -11,8 +11,9 @@ type RoomViewProps = {
   onPlaceNew?: (pos: { x: number; y: number }) => void;
   width?: number;
   height?: number;
-  onFinishMove: (id: number) => void;
+  onFinishMove: (id: number, pos: { x: number; y: number }) => void;
   conflictingIds?: Set<number>;
+  isAdmin?: boolean;
 };
 
 export default function RoomView({
@@ -25,6 +26,8 @@ export default function RoomView({
   width = 1000,
   height = 600,
   conflictingIds = new Set(),
+  isAdmin = false,
+  onFinishMove,
 }: RoomViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [dragging, setDragging] = useState<{
@@ -43,6 +46,10 @@ export default function RoomView({
     }
 
     function onUp() {
+      if (dragging) {
+        const t = tables.find((x) => x.id === dragging.id);
+        if (t) onFinishMove(dragging.id, t.position);
+      }
       setDragging(null);
     }
 
@@ -52,7 +59,7 @@ export default function RoomView({
       window.removeEventListener("mousemove", onMoveMouse);
       window.removeEventListener("mouseup", onUp);
     };
-  }, [dragging, onMove]);
+  }, [dragging, onMove, tables, onFinishMove]);
 
   const handleContainerClick = (e: React.MouseEvent) => {
     if (!placementMode?.active || !containerRef.current) return;
@@ -61,6 +68,7 @@ export default function RoomView({
   };
 
   const handleMouseDown = (e: React.MouseEvent, table: Table) => {
+    if (!isAdmin) return;
     if (table["is-locked"]) return;
     if (selectedTable?.id !== table.id) return;
     e.stopPropagation();

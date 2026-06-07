@@ -1,12 +1,39 @@
-import { useState } from "react";
-import initialTables from "../data/tables.json";
+import { useState, useEffect } from "react";
 import type { Table } from "../types/types";
 import { canPlaceTableAt, getTableSize } from "../utils/placement";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
+function getToken() {
+  return localStorage.getItem("token");
+}
+
+function authHeaders() {
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${getToken()}`,
+    "X-Neptun-Code": import.meta.env.VITE_NEPTUN_CODE ?? "",
+  };
+}
+
 export function useTables(roomSize: { width: number; height: number }) {
-  const [tables, setTables] = useState<Table[]>(() =>
-    (initialTables as Table[]).map((t) => ({ ...t })),
-  );
+  const [tables, setTables] = useState<Table[]>([]);
+
+  type ApiTable = Omit<Table, "is-locked"> & { isLocked: boolean };
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/v1/tables`)
+      .then((res) => res.json())
+      .then((data: ApiTable[]) =>
+        setTables(
+          data.map((t) => ({
+            ...t,
+            "is-locked": t.isLocked,
+          })),
+        ),
+      )
+      .catch(() => console.error("Nem sikerült betölteni az asztalokat."));
+  }, []);
 
   const conflictingIds = new Set<number>(
     tables.flatMap((t) => {
@@ -38,28 +65,22 @@ export function useTables(roomSize: { width: number; height: number }) {
     );
   };
 
-  const commitMove = (id: number) => {
+  const commitMove = async (id: number, pos: { x: number; y: number }) => {
     const t = tables.find((x) => x.id === id);
-    if (!t) return;
+    if (t?.["is-locked"]) return;
 
-    const ok = canPlaceTableAt(t, t.position, tables, roomSize);
-    if (!ok) {
-      const size = getTableSize(t.type);
-      const x = Math.min(
-        Math.max(t.position.x, 0),
-        roomSize.width - size.width,
-      );
-      const y = Math.min(
-        Math.max(t.position.y, 0),
-        roomSize.height - size.height,
-      );
-      setTables((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, position: { x, y } } : p)),
-      );
-    }
+    await fetch(`${API_URL}/api/v1/tables/${id}/position`, {
+      method: "PATCH",
+      headers: authHeaders(),
+      body: JSON.stringify({ x: pos.x, y: pos.y }),
+    });
   };
 
-  const handleDelete = (id: number) => {
+  const handleDelete = async (id: number) => {
+    await fetch(`${API_URL}/api/v1/tables/${id}`, {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
     setTables((prev) => prev.filter((t) => t.id !== id));
   };
 
@@ -83,12 +104,40 @@ export function useTables(roomSize: { width: number; height: number }) {
     );
   };
 
-  const handleCreateRequest = (partial: Omit<Table, "id">) => {
-    const newId = Math.max(0, ...tables.map((t) => t.id)) + 1;
-    const candidate: Table = { id: newId, ...partial };
+  const handleSaveTable = async (id: number, updates: Partial<Table>) => {
+    const body: Record<string, unknown> = {};
 
-    const { width, height, clearance } = getTableSize(candidate.type);
-    const { x, y } = candidate.position;
+    if (updates.status !== undefined) body.status = updates.status;
+    if (updates.color !== undefined) body.color = updates.color;
+    if (updates["is-locked"] !== undefined)
+      body.isLocked = updates["is-locked"];
+    if (updates.position !== undefined) {
+      body.x = updates.position.x;
+      body.y = updates.position.y;
+    }
+
+    const res = await fetch(`${API_URL}/api/v1/tables/${id}`, {
+      method: "PATCH",
+      headers: authHeaders(),
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      alert("Nem sikerült menteni a módosításokat.");
+      return;
+    }
+
+    const updated = await res.json();
+    const normalized = {
+      ...updated,
+      "is-locked": updated.isLocked,
+    };
+    setTables((prev) => prev.map((t) => (t.id === id ? normalized : t)));
+  };
+
+  const handleCreateRequest = async (partial: Omit<Table, "id">) => {
+    const { width, height, clearance } = getTableSize(partial.type);
+    const { x, y } = partial.position;
 
     if (
       x - clearance < 0 ||
@@ -100,8 +149,24 @@ export function useTables(roomSize: { width: number; height: number }) {
       return;
     }
 
-    setTables((prev) => [...prev, candidate]);
-    return candidate;
+    const res = await fetch(`${API_URL}/api/v1/tables`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        ...partial,
+        isLocked: partial["is-locked"],
+      }),
+    });
+
+    if (!res.ok) {
+      alert("Nem sikerült létrehozni az asztalt.");
+      return;
+    }
+
+    const created = await res.json();
+    const normalized = { ...created, "is-locked": created.isLocked };
+    setTables((prev) => [...prev, normalized]);
+    return normalized;
   };
 
   return {
@@ -114,6 +179,7 @@ export function useTables(roomSize: { width: number; height: number }) {
     handleUpdateColor,
     handleUpdatePosition,
     handleUpdateLocked,
+    handleSaveTable,
     handleCreateRequest,
   };
 }
